@@ -1,0 +1,200 @@
+---
+title: "Project 3 Code Appendix"
+author: "Ethan Lewis"
+date: "4/22/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+suppressMessages(library(ggplot2))
+suppressMessages(library(plotly))
+suppressMessages(library(rpart))
+suppressMessages(library(rpart.plot))
+suppressMessages(library(rattle))
+suppressMessages(library(randomForest))
+suppressMessages(library(caret))
+suppressMessages(library(gridExtra))
+```
+
+```{r}
+ McDonaldsProj3 <- read.csv("~/Downloads/STA/STA 363/Project 3/McDonaldsProj3.csv")
+```
+
+## Abstract 
+
+No Code
+
+## Data Cleaning
+
+```{r}
+McDonalds <- McDonaldsProj3[,-c(5,7,9,12,14,16,18)]
+#Remove % Daily Values
+```
+
+## Modeling Calories
+
+```{r}
+McDonaldsCalories <- McDonalds[,-c(1,2)]
+#Remove categorical variables
+```
+
+```{r, fig.asp=0.55}
+par(mfrow=c(1,2))
+boxplot(McDonaldsCalories$Calories , main = "Figure 1.1")
+hist(McDonaldsCalories$Calories , xlab = "Calories" , main = "Figure 1.2")
+
+#Plots to explore response variable
+```
+
+```{r}
+treeCalories <- rpart(Calories~. , method = "anova" , data = McDonaldsCalories)
+#Fit tree
+```
+
+```{r, fig.asp=0.6}
+fancyRpartPlot(treeCalories , sub="" , main = "Figure 1.3")
+#Visualize tree
+```
+
+```{r, results='hide'}
+printcp(treeCalories)
+#CP Table, use Row 8
+```
+
+```{r}
+pruneCalories <- prune(treeCalories , cp=treeCalories$cptable[8,"CP"])
+#Fit pruned tree
+```
+
+```{r}
+fancyRpartPlot(pruneCalories , sub = "" , main = "Figure 1.4")
+#Visualize pruned tree
+```
+
+```{r, results='hide'}
+sqrt(mean((McDonaldsCalories$Calories - predict(pruneCalories))^2))
+#Training RMSE
+```
+
+```{r, results='hide'}
+sqrt(48872 * treeCalories$cptable[8,"CP"])
+#Test RMSE
+```
+
+```{r, results='hide'}
+n <- nrow(McDonaldsCalories)
+YCalories <- McDonaldsCalories$Calories
+XCalories <- McDonaldsCalories$Total.Fat
+
+rangeTotalFat <- seq(from=min(XCalories) , to=max(XCalories) , by=1)
+rssTotalFat <- rep(0 , length(rangeTotalFat))
+
+for(i in 1:length(rangeTotalFat)){
+  leaf1TotalFat <- which(XCalories < rangeTotalFat[i])
+  leaf2TotalFat <- c(1:n)[-leaf1TotalFat]
+  
+  mean1TotalFat <- mean(YCalories[leaf1TotalFat])
+  mean2TotalFat <- mean(YCalories[leaf2TotalFat])
+  
+  predsTotalFat <- rep(0,n)
+  predsTotalFat[leaf1TotalFat] <- mean1TotalFat
+  predsTotalFat[leaf2TotalFat] <- mean2TotalFat
+  rssTotalFat[i] <- sum((YCalories - predsTotalFat)^2)
+}
+rangeTotalFat[which.min(rssTotalFat)]
+rssTotalFat[which.min(rssTotalFat)]
+#First split RSS and value for Total Fat
+```
+
+## Modeling All Categories
+
+```{r}
+McDonaldsCategory <- McDonalds[,-2]
+#Remove item names 
+```
+
+```{r, results='hide'}
+ggplot(McDonaldsCategory , aes(x=Category)) + geom_bar() + labs(title = "Figure 2.1")
+table(McDonaldsCategory$Category)
+#Response variable plots
+```
+
+```{r}
+set.seed(363)
+treeCategory <- rpart(Category~. , method = "class" , data = McDonaldsCategory)
+#Fit tree
+```
+
+```{r}
+fancyRpartPlot(treeCategory , sub = "" , main = "Figure 2.2")
+#Visualize tree
+```
+
+```{r, results='hide'}
+printcp(treeCategory)
+#CP Table 
+```
+
+```{r, results='hide'}
+table(x=McDonaldsCategory$Category , y=predict(treeCategory , type = "class"))
+#Use to find training CER
+```
+
+## Predicting Calories
+
+```{r}
+baggedCalories <- randomForest(Calories~. , data = McDonaldsCalories , mtry=14 , importance=TRUE , ntree=1000 , compete=FALSE)
+#Create bagged forest
+```
+
+```{r, results='hide'}
+baggedCalories
+#Bagged forest info 
+```
+
+```{r, fig.asp=0.65}
+dotchart(importance(baggedCalories)[,1] , xlab = "Percent Increase in OOB Error" , main = "Figure 3.1")
+#Dot chart for variable importance
+```
+
+```{r, results='hide'}
+sort(importance(baggedCalories)[,1] , decreasing = TRUE)
+#Regression forest importance values 
+```
+
+```{r, results='hide'}
+varImp(pruneCalories , compete=FALSE , surrogates = FALSE)
+#Regression tree importance values
+```
+
+```{r}
+set.seed(363)
+randomCalories <- randomForest(Calories~. , data = McDonaldsCalories , mtry=sqrt(14) , importance=TRUE , ntree=1000 , compete=FALSE)
+#Create random forest
+```
+
+```{r, results='hide'}
+randomCalories
+#Random forest info
+```
+
+```{r, fig.asp=0.65}
+dotchart(importance(randomCalories)[,1] , xlab = "Percent Increase in OOB Error" , main = "Figure 3.2")
+#Dot chart for variable importance
+```
+
+```{r, results='hide'}
+sort(importance(randomCalories)[,1] , decreasing = TRUE)
+#Random forest importance values 
+```
+
+```{r}
+par(mfrow=c(1,2))
+partialPlot(baggedCalories , McDonaldsCalories , x.var = "Total.Fat" , ylab = "Calories" , main = "Figure 3.3" , xlab = "Total Fat")
+partialPlot(baggedCalories , McDonaldsCalories , x.var = "Sugars" , ylab = "Calories" , main = "Figure 3.4" , xlab = "Sugars")
+#Total.Fat and Sugars partial dependence plot
+```
